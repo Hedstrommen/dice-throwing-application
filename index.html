@@ -21,20 +21,12 @@
 
     <p id="error" class="error" role="alert" hidden></p>
 
-    <div class="scene">
-      <div id="dice" class="dice">
-        <div class="face front">1</div>
-        <div class="face back">2</div>
-        <div class="face right">3</div>
-        <div class="face left">4</div>
-        <div class="face top">5</div>
-        <div class="face bottom">6</div>
-      </div>
-    </div>
+    <canvas id="scene-canvas" width="360" height="360" aria-label="3D die"></canvas>
 
     <p id="result" class="result" aria-live="polite">Press Roll to throw the die.</p>
   </main>
 
+  <script src="solids.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
