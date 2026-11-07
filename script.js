@@ -101,7 +101,11 @@ function render(solid, labels, R, lift = 0) {
       const q = pts[face.indices[(k + 1) % count]];
       edgeLen += Math.hypot(p[0] - q[0], p[1] - q[1]);
     }
-    return { face, i, n, depth: depth / count, cx: cxSum / count, cy: cySum / count, size: edgeLen / count };
+    let modelEdge = 0;
+    for (let k = 0; k < count; k++) {
+      modelEdge += mag(sub(solid.vertices[face.indices[k]], solid.vertices[face.indices[(k + 1) % count]]));
+    }
+    return { face, i, n, depth: depth / count, cx: cxSum / count, cy: cySum / count, size: edgeLen / count, modelEdge: modelEdge / count };
   });
   faceData.sort((a, b) => a.depth - b.depth);
 
@@ -121,14 +125,28 @@ function render(solid, labels, R, lift = 0) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Draw the label upright on every face turned toward the viewer.
+    // Stamp the label onto the face: map the text's local axes onto the
+    // face's projected edge directions so it lies flat on the face plane.
     if (fd.n[2] > 0.05 && labels[fd.i] !== undefined) {
-      const fontSize = Math.max(13, Math.min(60, fd.size * s * 0.55));
+      const inds = fd.face.indices;
+      const e1 = norm(sub(solid.vertices[inds[1]], solid.vertices[inds[0]]));
+      let e2 = sub(solid.vertices[inds[2 % inds.length]], solid.vertices[inds[0]]);
+      e2 = norm(sub(e2, scale(e1, dot(e2, e1))));
+      const p1 = matVec(R, e1);
+      const p2 = matVec(R, e2);
+      const su = [p1[0] * s, -p1[1] * s];
+      let sv = [p2[0] * s, -p2[1] * s];
+      if (sv[1] > 0) sv = [-sv[0], -sv[1]];
+      const fontSize = Math.max(0.15, Math.min(1.1, fd.modelEdge * 0.55));
+      ctx.save();
+      ctx.translate(cx + fd.cx * s, cy - fd.cy * s);
+      ctx.transform(su[0], su[1], -sv[0], -sv[1], 0, 0);
       ctx.fillStyle = "#101826";
       ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(String(labels[fd.i]), cx + fd.cx * s, cy - fd.cy * s);
+      ctx.fillText(String(labels[fd.i]), 0, 0);
+      ctx.restore();
     }
   }
   ctx.restore();
@@ -143,8 +161,9 @@ function showError(message) {
   errorEl.hidden = !message;
 }
 
-// Resting pose: a 3/4 view so the result face and its neighbours are all visible.
-const REST_TILT = matMul(rotAxis([1, 0, 0], -0.5), rotAxis([0, 1, 0], 0.45));
+// Resting pose: mostly facing the viewer so the die visibly settles on the
+// rolled number, with a slight tilt so neighbouring faces stay visible.
+const REST_TILT = matMul(rotAxis([1, 0, 0], -0.3), rotAxis([0, 1, 0], 0.32));
 
 let rotation = REST_TILT;
 let rolling = false;
