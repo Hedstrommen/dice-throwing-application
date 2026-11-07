@@ -103,7 +103,7 @@ function render(solid, labels, R, lift = 0) {
     }
     return { face, i, n, depth: depth / count, cx: cxSum / count, cy: cySum / count, size: edgeLen / count };
   });
-  faceData.sort((a, b) => b.depth - a.depth);
+  faceData.sort((a, b) => a.depth - b.depth);
 
   for (const fd of faceData) {
     const brightness = 0.45 + 0.55 * Math.max(0, dot(fd.n, light));
