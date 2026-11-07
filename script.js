@@ -58,54 +58,59 @@ function axisAngle(R) {
   return { axis: [(R[7] - R[5]) / s, (R[2] - R[6]) / s, (R[3] - R[1]) / s], angle };
 }
 
-// Rotation that brings the face's outward normal to +Z (toward the viewer)
-// and its first edge upright, so the label is never mirrored or upside down.
+// Fixed camera: looking down at the table (~72 deg from horizontal).
+const VIEW = rotAxis([1, 0, 0], 1.25);
+
+// Rotation that stands the face up (+Y) with its first edge screen-up (-Z),
+// so the die comes to rest showing the rolled face from above.
 function orientationForFace(solid, faceIndex) {
   const face = solid.faces[faceIndex];
-  const z = [0, 0, 1];
-  const c = Math.max(-1, Math.min(1, dot(face.normal, z)));
-  const axis = cross(face.normal, z);
+  const up = [0, 1, 0];
+  const c = Math.max(-1, Math.min(1, dot(face.normal, up)));
+  const axis = cross(face.normal, up);
   const R1 = mag(axis) < 1e-9 ? (c > 0 ? identity() : rotAxis([1, 0, 0], Math.PI)) : rotAxis(axis, Math.acos(c));
   const edge = norm(sub(solid.vertices[face.indices[1]], solid.vertices[face.indices[0]]));
   const e = matVec(R1, edge);
-  const R2 = rotAxis(z, -Math.atan2(e[0], e[1]));
+  const R2 = rotAxis(up, Math.PI - Math.atan2(e[0], e[2]));
   return matMul(R2, R1);
 }
 
-function render(solid, labels, R, lift = 0) {
+function render(solid, labels, R, pos, lift) {
+  pos = pos || [0, 0];
+  lift = lift || 0;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
   const radius = Math.max(...solid.vertices.map((v) => mag(v)));
   const s = (SIZE * 0.36) / radius;
-  const light = norm([-0.4, 0.9, 0.6]);
+  const Rv = matMul(VIEW, R);
+  const light = norm([0.35, 1, 0.25]);
 
   ctx.clearRect(0, 0, SIZE, SIZE);
-  ctx.save();
-  ctx.translate(0, -lift);
-  const pts = solid.vertices.map((v) => matVec(R, v));
+
+  // Shadow on the table under the die.
+  const sh = matVec(Rv, [pos[0], -radius * 0.85, pos[1]]);
+  ctx.beginPath();
+  ctx.ellipse(cx + sh[0] * s, cy - sh[1] * s + lift * s * 0.6, radius * s * 0.9, radius * s * 0.5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+  ctx.fill();
+
+  const pts = solid.vertices.map((v) => matVec(Rv, [v[0] + pos[0], v[1] + lift, v[2] + pos[1]]));
 
   const faceData = solid.faces.map((face, i) => {
-    const n = matVec(R, face.normal);
+    const n = matVec(Rv, face.normal);
     let depth = 0;
     let cxSum = 0;
     let cySum = 0;
-    for (const idx of face.indices) {
+    let modelEdge = 0;
+    const count = face.indices.length;
+    for (let k = 0; k < count; k++) {
+      const idx = face.indices[k];
       depth += pts[idx][2];
       cxSum += pts[idx][0];
       cySum += pts[idx][1];
+      modelEdge += mag(sub(solid.vertices[idx], solid.vertices[face.indices[(k + 1) % count]]));
     }
-    const count = face.indices.length;
-    let edgeLen = 0;
-    for (let k = 0; k < count; k++) {
-      const p = pts[face.indices[k]];
-      const q = pts[face.indices[(k + 1) % count]];
-      edgeLen += Math.hypot(p[0] - q[0], p[1] - q[1]);
-    }
-    let modelEdge = 0;
-    for (let k = 0; k < count; k++) {
-      modelEdge += mag(sub(solid.vertices[face.indices[k]], solid.vertices[face.indices[(k + 1) % count]]));
-    }
-    return { face, i, n, depth: depth / count, cx: cxSum / count, cy: cySum / count, size: edgeLen / count, modelEdge: modelEdge / count };
+    return { face, i, n, depth: depth / count, cx: cxSum / count, cy: cySum / count, modelEdge: modelEdge / count };
   });
   faceData.sort((a, b) => a.depth - b.depth);
 
@@ -125,18 +130,20 @@ function render(solid, labels, R, lift = 0) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Stamp the label onto the face: map the text's local axes onto the
-    // face's projected edge directions so it lies flat on the face plane.
+    // Paint the label onto the face plane: map the text axes onto the face's
+    // projected edge directions so the number lies flat on the face.
     if (fd.n[2] > 0.05 && labels[fd.i] !== undefined) {
       const inds = fd.face.indices;
       const e1 = norm(sub(solid.vertices[inds[1]], solid.vertices[inds[0]]));
-      let e2 = sub(solid.vertices[inds[2 % inds.length]], solid.vertices[inds[0]]);
-      e2 = norm(sub(e2, scale(e1, dot(e2, e1))));
-      const p1 = matVec(R, e1);
-      const p2 = matVec(R, e2);
-      const su = [p1[0] * s, -p1[1] * s];
+      const e2 = norm(cross(fd.face.normal, e1));
+      const p1 = matVec(Rv, e1);
+      const p2 = matVec(Rv, e2);
+      let su = [p1[0] * s, -p1[1] * s];
       let sv = [p2[0] * s, -p2[1] * s];
-      if (sv[1] > 0) sv = [-sv[0], -sv[1]];
+      if (sv[1] > 0) {
+        su = [-su[0], -su[1]];
+        sv = [-sv[0], -sv[1]];
+      }
       const fontSize = Math.max(0.15, Math.min(1.1, fd.modelEdge * 0.55));
       ctx.save();
       ctx.translate(cx + fd.cx * s, cy - fd.cy * s);
@@ -149,7 +156,6 @@ function render(solid, labels, R, lift = 0) {
       ctx.restore();
     }
   }
-  ctx.restore();
 }
 
 function randomInt(max) {
@@ -161,11 +167,7 @@ function showError(message) {
   errorEl.hidden = !message;
 }
 
-// Resting pose: mostly facing the viewer so the die visibly settles on the
-// rolled number, with a slight tilt so neighbouring faces stay visible.
-const REST_TILT = matMul(rotAxis([1, 0, 0], -0.3), rotAxis([0, 1, 0], 0.32));
-
-let rotation = REST_TILT;
+let rotation = rotAxis([0, 1, 0], 0.5);
 let rolling = false;
 
 function preview() {
@@ -174,8 +176,8 @@ function preview() {
   const shapeFn = SHAPES[max] || SHAPES[6];
   const solid = shapeFn();
   const labels = max === 2 ? solid.faces.slice(0, 2).map((f) => f.label) : solid.faces.map((_, i) => (SHAPES[max] ? i + 1 : randomInt(max)));
-  rotation = REST_TILT;
-  render(solid, labels, rotation);
+  rotation = rotAxis([0, 1, 0], 0.5);
+  render(solid, labels, rotation, [0, 0], 0);
 }
 
 function roll(max) {
@@ -194,14 +196,19 @@ function roll(max) {
     targetFace = Math.floor(Math.random() * solid.faces.length);
   }
 
-  const R0 = rotation;
-  const R1 = matMul(REST_TILT, orientationForFace(solid, targetFace));
-  const TUMBLE_TIME = 1.15;
-  const SETTLE_TIME = 0.55;
+  const radius = Math.max(...solid.vertices.map((v) => mag(v)));
+  const s = (SIZE * 0.36) / radius;
+  const bound = (SIZE / 2 - radius * s * 0.85) / s;
+
+  const R_final = orientationForFace(solid, targetFace);
+  const TUMBLE_TIME = 1.25;
+  const SETTLE_TIME = 0.6;
   const start = performance.now();
   let last = start;
-  let R = R0;
-  let omega = scale(norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), 11 + Math.random() * 6);
+  let R = rotation;
+  let pos = [0, 0];
+  let vel = [(Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7];
+  let omega = scale(norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), 9 + Math.random() * 6);
   const scramble = isClassicDie ? null : setInterval(() => {
     labels = labels.map(() => randomInt(max));
   }, 90);
@@ -212,8 +219,8 @@ function roll(max) {
       labels = labels.map(() => randomInt(max));
       labels[targetFace] = result;
     }
-    rotation = R1;
-    render(solid, labels, rotation);
+    rotation = R_final;
+    render(solid, labels, R_final, [0, 0], 0);
     resultEl.textContent =
       max === 2 ? `The coin shows ${labels[targetFace]} (1 out of ${max})` : `You rolled ${result} (1 out of ${max})`;
     resultEl.classList.toggle("win", result === 1);
@@ -224,24 +231,38 @@ function roll(max) {
   function frame(now) {
     const t = (now - start) / 1000;
     if (t < TUMBLE_TIME) {
-      // Simulated throw: integrate a damped random angular velocity and bounce.
+      // Simulated throw: the die slides across the table, bounces off the
+      // edges of the view, spins with damped angular velocity and hops.
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
+      pos[0] += vel[0] * dt;
+      pos[1] += vel[1] * dt;
+      const fr = Math.exp(-1.1 * dt);
+      vel = [vel[0] * fr, vel[1] * fr];
+      if (Math.abs(pos[0]) > bound) {
+        pos[0] = Math.sign(pos[0]) * bound;
+        vel[0] = -vel[0] * 0.55;
+      }
+      if (Math.abs(pos[1]) > bound) {
+        pos[1] = Math.sign(pos[1]) * bound;
+        vel[1] = -vel[1] * 0.55;
+      }
       const w = mag(omega);
       if (w > 1e-6) R = matMul(rotAxis(omega, w * dt), R);
-      omega = scale(omega, Math.exp(-1.9 * dt));
-      const lift = Math.abs(Math.sin(t * 9)) * Math.exp(-2.4 * t) * 42;
+      omega = scale(omega, Math.exp(-1.7 * dt));
+      const lift = Math.abs(Math.sin(t * 7)) * Math.exp(-2.0 * t) * 0.5;
       rotation = R;
-      render(solid, labels, R, lift);
+      render(solid, labels, R, pos, lift);
       requestAnimationFrame(frame);
     } else {
-      // Settle: ease from wherever the tumble ended onto the result face.
+      // Settle: glide back to the middle and ease onto the rolled face.
       const u = Math.min(1, (t - TUMBLE_TIME) / SETTLE_TIME);
       const eased = 1 - Math.pow(1 - u, 3);
-      const d = axisAngle(matMul(R1, transpose(R)));
+      pos = [pos[0] * (1 - eased), pos[1] * (1 - eased)];
+      const d = axisAngle(matMul(R_final, transpose(R)));
       R = matMul(rotAxis(d.axis, d.angle * eased), R);
       rotation = R;
-      render(solid, labels, R, 0);
+      render(solid, labels, R, pos, 0);
       if (u < 1) requestAnimationFrame(frame);
       else finish();
     }
