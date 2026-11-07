@@ -119,9 +119,9 @@ function render(solid, labels, R) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Draw the label upright, only on faces turned toward the viewer.
-    if (fd.n[2] > 0.25) {
-      const fontSize = Math.max(12, Math.min(56, fd.size * s * 0.5));
+    // Draw the label upright on every face turned toward the viewer.
+    if (fd.n[2] > 0.05 && labels[fd.i] !== undefined) {
+      const fontSize = Math.max(13, Math.min(60, fd.size * s * 0.55));
       ctx.fillStyle = "#101826";
       ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
       ctx.textAlign = "center";

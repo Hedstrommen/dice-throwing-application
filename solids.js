@@ -178,16 +178,69 @@ const Solids = (() => {
     return { vertices, faces };
   }
 
+  // Polar dual of a convex polyhedron centered at the origin: each face maps
+  // to the point normal / distance, which keeps the dual's faces exactly planar.
+  function dual(solid) {
+    const centers = solid.faces.map((f) => scale(f.normal, 1 / dot(f.normal, solid.vertices[f.indices[0]])));
+    const faces = solid.vertices.map((v, vi) => {
+      const axis = norm(v);
+      const ref = norm(cross(axis, Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+      const adj = [];
+      solid.faces.forEach((f, fi) => {
+        if (f.indices.includes(vi)) adj.push(fi);
+      });
+      adj.sort((a, b) => {
+        const wa = sub(centers[a], scale(axis, dot(centers[a], axis)));
+        const wb = sub(centers[b], scale(axis, dot(centers[b], axis)));
+        return (
+          Math.atan2(dot(cross(ref, wa), axis), dot(ref, wa)) -
+          Math.atan2(dot(cross(ref, wb), axis), dot(ref, wb))
+        );
+      });
+      return orientOutward(centers, { indices: adj });
+    });
+    return { vertices: centers, faces };
+  }
+
+  function pentagonalAntiprism() {
+    const vertices = [];
+    const faces = [];
+    const n = 5;
+    const h = 0.5;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      vertices.push([Math.cos(a), h, Math.sin(a)]);
+    }
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.PI / n;
+      vertices.push([Math.cos(a), -h, Math.sin(a)]);
+    }
+    faces.push({ indices: [...Array(n).keys()] });
+    faces.push({ indices: [...Array(n).keys()].map((i) => i + n).reverse() });
+    for (let i = 0; i < n; i++) {
+      const ni = (i + 1) % n;
+      faces.push({ indices: [i, ni, n + i] });
+      faces.push({ indices: [n + i, n + ni, ni] });
+    }
+    return { vertices, faces: faces.map((f) => orientOutward(vertices, f)) };
+  }
+
+  // A d10 is the dual of the pentagonal antiprism: the pentagonal trapezohedron.
+  function d10() {
+    return dual(pentagonalAntiprism());
+  }
+
   const SHAPES = {
     2: coin,
     4: tetrahedron,
     6: cube,
     8: octahedron,
+    10: d10,
     12: dodecahedron,
     20: icosahedron,
   };
 
-  return { SHAPES, make, computeFaces, sub, add, dot, cross, mag, scale, norm };
+  return { SHAPES, make, computeFaces, dual, sub, add, dot, cross, mag, scale, norm };
 })();
 
 if (typeof module !== "undefined") module.exports = Solids;
