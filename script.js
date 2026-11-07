@@ -14,7 +14,7 @@ canvas.style.width = SIZE + "px";
 canvas.style.height = SIZE + "px";
 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-const { SHAPES, sub, dot, cross, mag, norm } = Solids;
+const { SHAPES, sub, dot, cross, mag, norm, scale } = Solids;
 
 const identity = () => [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
@@ -72,7 +72,7 @@ function orientationForFace(solid, faceIndex) {
   return matMul(R2, R1);
 }
 
-function render(solid, labels, R) {
+function render(solid, labels, R, lift = 0) {
   const cx = SIZE / 2;
   const cy = SIZE / 2;
   const radius = Math.max(...solid.vertices.map((v) => mag(v)));
@@ -80,6 +80,8 @@ function render(solid, labels, R) {
   const light = norm([-0.4, 0.9, 0.6]);
 
   ctx.clearRect(0, 0, SIZE, SIZE);
+  ctx.save();
+  ctx.translate(0, -lift);
   const pts = solid.vertices.map((v) => matVec(R, v));
 
   const faceData = solid.faces.map((face, i) => {
@@ -129,6 +131,7 @@ function render(solid, labels, R) {
       ctx.fillText(String(labels[fd.i]), cx + fd.cx * s, cy - fd.cy * s);
     }
   }
+  ctx.restore();
 }
 
 function randomInt(max) {
@@ -140,7 +143,10 @@ function showError(message) {
   errorEl.hidden = !message;
 }
 
-let rotation = matMul(rotAxis([0, 1, 0], -0.6), rotAxis([1, 0, 0], -0.45));
+// Resting pose: a 3/4 view so the result face and its neighbours are all visible.
+const REST_TILT = matMul(rotAxis([1, 0, 0], -0.5), rotAxis([0, 1, 0], 0.45));
+
+let rotation = REST_TILT;
 let rolling = false;
 
 function preview() {
@@ -149,7 +155,7 @@ function preview() {
   const shapeFn = SHAPES[max] || SHAPES[6];
   const solid = shapeFn();
   const labels = max === 2 ? solid.faces.slice(0, 2).map((f) => f.label) : solid.faces.map((_, i) => (SHAPES[max] ? i + 1 : randomInt(max)));
-  rotation = matMul(rotAxis([0, 1, 0], -0.6), rotAxis([1, 0, 0], -0.45));
+  rotation = REST_TILT;
   render(solid, labels, rotation);
 }
 
@@ -170,10 +176,13 @@ function roll(max) {
   }
 
   const R0 = rotation;
-  const R1 = orientationForFace(solid, targetFace);
-  const { axis, angle } = axisAngle(matMul(R1, transpose(R0)));
-  const duration = 1600;
+  const R1 = matMul(REST_TILT, orientationForFace(solid, targetFace));
+  const TUMBLE_TIME = 1.15;
+  const SETTLE_TIME = 0.55;
   const start = performance.now();
+  let last = start;
+  let R = R0;
+  let omega = scale(norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), 11 + Math.random() * 6);
   const scramble = isClassicDie ? null : setInterval(() => {
     labels = labels.map(() => randomInt(max));
   }, 90);
@@ -194,12 +203,29 @@ function roll(max) {
   }
 
   function frame(now) {
-    const t = Math.min(1, (now - start) / duration);
-    const eased = 1 - Math.pow(1 - t, 4);
-    rotation = matMul(rotAxis(axis, angle * eased), R0);
-    render(solid, labels, rotation);
-    if (t < 1) requestAnimationFrame(frame);
-    else finish();
+    const t = (now - start) / 1000;
+    if (t < TUMBLE_TIME) {
+      // Simulated throw: integrate a damped random angular velocity and bounce.
+      const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
+      last = now;
+      const w = mag(omega);
+      if (w > 1e-6) R = matMul(rotAxis(omega, w * dt), R);
+      omega = scale(omega, Math.exp(-1.9 * dt));
+      const lift = Math.abs(Math.sin(t * 9)) * Math.exp(-2.4 * t) * 42;
+      rotation = R;
+      render(solid, labels, R, lift);
+      requestAnimationFrame(frame);
+    } else {
+      // Settle: ease from wherever the tumble ended onto the result face.
+      const u = Math.min(1, (t - TUMBLE_TIME) / SETTLE_TIME);
+      const eased = 1 - Math.pow(1 - u, 3);
+      const d = axisAngle(matMul(R1, transpose(R)));
+      R = matMul(rotAxis(d.axis, d.angle * eased), R);
+      rotation = R;
+      render(solid, labels, R, 0);
+      if (u < 1) requestAnimationFrame(frame);
+      else finish();
+    }
   }
   requestAnimationFrame(frame);
 }
