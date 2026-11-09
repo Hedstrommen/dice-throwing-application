@@ -213,12 +213,21 @@ function roll(max) {
     labels = labels.map(() => randomInt(max));
   }, 90);
 
-  function finish() {
+  // Lock the labels onto their final values once the die starts settling,
+  // so the numbers stop flickering before the result is shown.
+  let labelsLocked = false;
+  function lockLabels() {
+    if (labelsLocked) return;
+    labelsLocked = true;
     if (scramble) clearInterval(scramble);
     if (!isClassicDie) {
       labels = labels.map(() => randomInt(max));
       labels[targetFace] = result;
     }
+  }
+
+  function finish() {
+    lockLabels();
     rotation = R_final;
     render(solid, labels, R_final, [0, 0], 0);
     resultEl.textContent =
@@ -256,6 +265,7 @@ function roll(max) {
       requestAnimationFrame(frame);
     } else {
       // Settle: glide back to the middle and ease onto the rolled face.
+      lockLabels();
       const u = Math.min(1, (t - TUMBLE_TIME) / SETTLE_TIME);
       const eased = 1 - Math.pow(1 - u, 3);
       pos = [pos[0] * (1 - eased), pos[1] * (1 - eased)];
