@@ -93,16 +93,25 @@ export class CanvasRenderer {
         const e2 = norm(cross(fd.face.normal, e1));
         const p1 = matVec(Rv, e1);
         const p2 = matVec(Rv, e2);
-        let su = [p1[0] * s, -p1[1] * s];
-        let sv = [p2[0] * s, -p2[1] * s];
-        if (sv[1] > 0) {
-          su = [-su[0], -su[1]];
-          sv = [-sv[0], -sv[1]];
+        const su = [p1[0] * s, -p1[1] * s];
+        const sv = [p2[0] * s, -p2[1] * s];
+        // Orient the text so it reads left-to-right across the screen with the
+        // top of the glyphs toward the top of the screen, i.e. facing the user.
+        let u = Math.abs(su[0]) >= Math.abs(sv[0]) ? su : sv;
+        let w = u === su ? sv : su;
+        if (u[0] < 0) {
+          u = [-u[0], -u[1]];
+          w = [-w[0], -w[1]];
+        }
+        if (u[0] * w[1] - u[1] * w[0] < 0) w = [-w[0], -w[1]];
+        if (w[1] < 0) {
+          u = [-u[0], -u[1]];
+          w = [-w[0], -w[1]];
         }
         const fontSize = Math.max(0.15, Math.min(1.1, fd.modelEdge * 0.55));
         ctx.save();
         ctx.translate(cx + fd.cx * s, cy - fd.cy * s);
-        ctx.transform(su[0], su[1], -sv[0], -sv[1], 0, 0);
+        ctx.transform(u[0], u[1], w[0], w[1], 0, 0);
         ctx.fillStyle = "#101826";
         ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
         ctx.textAlign = "center";
