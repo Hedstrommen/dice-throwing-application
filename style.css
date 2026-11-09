@@ -50,7 +50,8 @@ h1 {
   font-size: 1.05rem;
 }
 
-.controls input {
+.controls input,
+.controls select {
   width: 6rem;
   padding: 0.5rem 0.6rem;
   font-size: 1.05rem;
@@ -60,7 +61,8 @@ h1 {
   color: #eef2f7;
 }
 
-.controls input:focus {
+.controls input:focus,
+.controls select:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

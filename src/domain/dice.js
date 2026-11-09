@@ -1,6 +1,14 @@
 import { SHAPES } from "./solids.js";
 
 export const MAX_ODDS = 1000000;
+export const MAX_DICE = 10;
+
+export function validateAmount(amount) {
+  if (!Number.isInteger(amount) || amount < 1 || amount > MAX_DICE) {
+    return `Enter a whole number of dice from 1 to ${MAX_DICE}.`;
+  }
+  return null;
+}
 
 export function isClassicDie(sides) {
   return Boolean(SHAPES[sides]);

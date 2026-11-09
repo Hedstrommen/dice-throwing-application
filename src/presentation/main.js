@@ -1,12 +1,13 @@
 import { rotAxis, matMul, transpose, axisAngle, mag, scale, norm } from "../domain/math3.js";
-import { isClassicDie, labelsFor, validateOdds } from "../domain/dice.js";
+import { labelsFor, validateAmount } from "../domain/dice.js";
 import { rollDie } from "../application/rollDice.js";
 import { createRandomSource } from "../infrastructure/randomSource.js";
 import { createGeometry } from "../infrastructure/geometry.js";
 import { CanvasRenderer, orientationForFace } from "../infrastructure/canvasRenderer.js";
 
 const form = document.getElementById("odds-form");
-const oddsInput = document.getElementById("odds-input");
+const amountInput = document.getElementById("amount-input");
+const typeInput = document.getElementById("type-input");
 const rollButton = document.getElementById("roll-button");
 const errorEl = document.getElementById("error");
 const resultEl = document.getElementById("result");
@@ -24,48 +25,78 @@ function showError(message) {
 let rotation = rotAxis([0, 1, 0], 0.5);
 let rolling = false;
 
-function preview() {
-  const max = Number(oddsInput.value);
-  if (!Number.isInteger(max) || max < 1) return;
-  const solid = geometry.solidFor(max);
-  const labels = isClassicDie(max)
-    ? labelsFor(solid, max)
-    : Array.from({ length: solid.faces.length }, () => randomSource.nextInt(max));
-  rotation = rotAxis([0, 1, 0], 0.5);
-  renderer.render([{ solid, labels, R: rotation, pos: [0, 0], lift: 0 }]);
+// Lay the dice out on a centered grid that fits the canvas.
+function layoutFor(amount, solid) {
+  const radius = Math.max(...solid.vertices.map((v) => mag(v)));
+  const cols = Math.ceil(Math.sqrt(amount));
+  const rows = Math.ceil(amount / cols);
+  const s = Math.min((renderer.size * 0.36) / radius, (renderer.size * 0.8) / (2 * radius * Math.max(cols, rows)));
+  const slots = [];
+  for (let i = 0; i < amount; i++) {
+    const c = i % cols;
+    const r = Math.floor(i / cols);
+    slots.push([
+      ((c - (cols - 1) / 2) * renderer.size * 0.8) / cols / s,
+      ((r - (rows - 1) / 2) * renderer.size * 0.8) / rows / s,
+    ]);
+  }
+  return { s, slots, bound: (renderer.size / 2 - radius * s * 0.85) / s };
 }
 
-function roll(max) {
-  const solid = geometry.solidFor(max);
-  const outcome = rollDie({ sides: max, solid, randomSource });
-  const classic = isClassicDie(max);
+function preview() {
+  const amount = Number(amountInput.value);
+  const sides = Number(typeInput.value);
+  if (!Number.isInteger(amount) || amount < 1) return;
+  const solid = geometry.solidFor(sides);
+  const layout = layoutFor(amount, solid);
+  rotation = rotAxis([0, 1, 0], 0.5);
+  const dice = [];
+  for (let i = 0; i < amount; i++) {
+    dice.push({ solid, labels: labelsFor(solid, sides), R: rotation, pos: layout.slots[i], lift: 0, s: layout.s });
+  }
+  renderer.render(dice);
+}
 
-  const radius = Math.max(...solid.vertices.map((v) => mag(v)));
-  const s = (renderer.size * 0.36) / radius;
-  const bound = (renderer.size / 2 - radius * s * 0.85) / s;
-
-  const R_final = orientationForFace(solid, outcome.faceIndex);
+function roll(amount, sides) {
+  const solid = geometry.solidFor(sides);
+  const layout = layoutFor(amount, solid);
   const TUMBLE_TIME = 1.25;
   const SETTLE_TIME = 0.6;
   const start = performance.now();
   let last = start;
-  let R = rotation;
-  let pos = [0, 0];
-  let vel = [(Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7];
-  let omega = scale(norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), 9 + Math.random() * 6);
-  let labels = outcome.labels.slice();
-  const scramble = classic ? null : setInterval(() => {
-    labels = labels.map(() => randomSource.nextInt(max));
-  }, 90);
+  const dice = [];
+  for (let i = 0; i < amount; i++) {
+    const outcome = rollDie({ sides, solid, randomSource });
+    dice.push({
+      solid,
+      outcome,
+      labels: outcome.labels.slice(),
+      R_final: orientationForFace(solid, outcome.faceIndex),
+      slot: layout.slots[i],
+      R: rotation,
+      pos: [0, 0],
+      vel: [(Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7],
+      omega: scale(norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), 9 + Math.random() * 6),
+      lift: 0,
+      s: layout.s,
+    });
+  }
 
   function finish() {
-    if (scramble) clearInterval(scramble);
-    labels = outcome.labels.slice();
-    rotation = R_final;
-    renderer.render([{ solid, labels, R: R_final, pos: [0, 0], lift: 0, s }]);
+    for (const d of dice) d.R = d.R_final;
+    rotation = dice[0].R_final;
+    renderer.render(dice);
+    const parts = dice.map((d) => d.labels[d.outcome.faceIndex]);
+    const total = dice.reduce((sum, d) => sum + d.outcome.value, 0);
     resultEl.textContent =
-      max === 2 ? `The coin shows ${labels[outcome.faceIndex]} (1 out of ${max})` : `You rolled ${outcome.value} (1 out of ${max})`;
-    resultEl.classList.toggle("win", outcome.value === 1);
+      sides === 2
+        ? amount === 1
+          ? `The coin shows ${parts[0]}`
+          : `The coins show ${parts.join(", ")}`
+        : amount === 1
+          ? `You rolled ${parts[0]} (1 out of ${sides})`
+          : `Rolled ${amount}d${sides}: ${parts.join(", ")} — total ${total}`;
+    resultEl.classList.toggle("win", amount === 1 && dice[0].outcome.value === 1);
     rollButton.disabled = false;
     rolling = false;
   }
@@ -73,39 +104,42 @@ function roll(max) {
   function frame(now) {
     const t = (now - start) / 1000;
     if (t < TUMBLE_TIME) {
+      // Simulated throw: the dice slide across the table, bounce off the
+      // edges of the view, spin with damped angular velocity and hop.
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
-      pos[0] += vel[0] * dt;
-      pos[1] += vel[1] * dt;
-      const fr = Math.exp(-1.1 * dt);
-      vel = [vel[0] * fr, vel[1] * fr];
-      if (Math.abs(pos[0]) > bound) {
-        pos[0] = Math.sign(pos[0]) * bound;
-        vel[0] = -vel[0] * 0.55;
+      for (let i = 0; i < dice.length; i++) {
+        const d = dice[i];
+        d.pos[0] += d.vel[0] * dt;
+        d.pos[1] += d.vel[1] * dt;
+        const fr = Math.exp(-1.1 * dt);
+        d.vel = [d.vel[0] * fr, d.vel[1] * fr];
+        if (Math.abs(d.pos[0]) > layout.bound) {
+          d.pos[0] = Math.sign(d.pos[0]) * layout.bound;
+          d.vel[0] = -d.vel[0] * 0.55;
+        }
+        if (Math.abs(d.pos[1]) > layout.bound) {
+          d.pos[1] = Math.sign(d.pos[1]) * layout.bound;
+          d.vel[1] = -d.vel[1] * 0.55;
+        }
+        const w = mag(d.omega);
+        if (w > 1e-6) d.R = matMul(rotAxis(d.omega, w * dt), d.R);
+        d.omega = scale(d.omega, Math.exp(-1.7 * dt));
+        d.lift = Math.abs(Math.sin(t * 7 + i * 1.7)) * Math.exp(-2.0 * t) * 0.5;
       }
-      if (Math.abs(pos[1]) > bound) {
-        pos[1] = Math.sign(pos[1]) * bound;
-        vel[1] = -vel[1] * 0.55;
-      }
-      const w = mag(omega);
-      if (w > 1e-6) R = matMul(rotAxis(omega, w * dt), R);
-      omega = scale(omega, Math.exp(-1.7 * dt));
-      const lift = Math.abs(Math.sin(t * 7)) * Math.exp(-2.0 * t) * 0.5;
-      rotation = R;
-      renderer.render([{ solid, labels, R, pos, lift, s }]);
+      renderer.render(dice);
       requestAnimationFrame(frame);
     } else {
-      if (scramble) {
-        clearInterval(scramble);
-        labels = outcome.labels.slice();
-      }
+      // Settle: glide to the grid slots and ease onto the rolled faces.
       const u = Math.min(1, (t - TUMBLE_TIME) / SETTLE_TIME);
       const eased = 1 - Math.pow(1 - u, 3);
-      pos = [pos[0] * (1 - eased), pos[1] * (1 - eased)];
-      const d = axisAngle(matMul(R_final, transpose(R)));
-      R = matMul(rotAxis(d.axis, d.angle * eased), R);
-      rotation = R;
-      renderer.render([{ solid, labels, R, pos, lift: 0, s }]);
+      for (const d of dice) {
+        d.pos = [d.pos[0] * (1 - eased) + d.slot[0] * eased, d.pos[1] * (1 - eased) + d.slot[1] * eased];
+        const diff = axisAngle(matMul(d.R_final, transpose(d.R)));
+        d.R = matMul(rotAxis(diff.axis, diff.angle * eased), d.R);
+        d.lift = 0;
+      }
+      renderer.render(dice);
       if (u < 1) requestAnimationFrame(frame);
       else finish();
     }
@@ -117,22 +151,26 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   if (rolling) return;
 
-  const max = Number(oddsInput.value);
-  const error = validateOdds(max);
-  if (error) {
-    showError(error);
+  const amount = Number(amountInput.value);
+  const amountError = validateAmount(amount);
+  if (amountError) {
+    showError(amountError);
     return;
   }
+  const sides = Number(typeInput.value);
 
   showError("");
   rollButton.disabled = true;
   rolling = true;
   resultEl.classList.remove("win");
   resultEl.textContent = "Rolling...";
-  roll(max);
+  roll(amount, sides);
 });
 
-oddsInput.addEventListener("input", () => {
+amountInput.addEventListener("input", () => {
+  if (!rolling) preview();
+});
+typeInput.addEventListener("change", () => {
   if (!rolling) preview();
 });
 

@@ -1,5 +1,21 @@
 const CACHE = "dice-thrower-v1";
-const ASSETS = ["./", "index.html", "style.css", "script.js", "solids.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+const ASSETS = [
+  "./",
+  "index.html",
+  "style.css",
+  "manifest.webmanifest",
+  "icon-192.png",
+  "icon-512.png",
+  "src/presentation/main.js",
+  "src/domain/math3.js",
+  "src/domain/solids.js",
+  "src/domain/dice.js",
+  "src/application/ports.js",
+  "src/application/rollDice.js",
+  "src/infrastructure/randomSource.js",
+  "src/infrastructure/geometry.js",
+  "src/infrastructure/canvasRenderer.js",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
