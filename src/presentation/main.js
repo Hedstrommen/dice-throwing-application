@@ -148,6 +148,33 @@ function roll(amount, sides) {
         d.omega = scale(d.omega, Math.exp(-1.7 * dt));
         d.lift = Math.abs(Math.sin(t * 7 + i * 1.7)) * Math.exp(-2.0 * t) * 0.5;
       }
+      // Dice bounce off each other instead of sticking together.
+      const colR = Math.max(...solid.vertices.map((v) => mag(v))) * 0.95;
+      for (let i = 0; i < dice.length; i++) {
+        for (let j = i + 1; j < dice.length; j++) {
+          const a = dice[i];
+          const b = dice[j];
+          const dx = b.pos[0] - a.pos[0];
+          const dy = b.pos[1] - a.pos[1];
+          const dist = Math.hypot(dx, dy);
+          if (dist >= 2 * colR || dist < 1e-9) continue;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = 2 * colR - dist;
+          a.pos[0] -= nx * overlap / 2;
+          a.pos[1] -= ny * overlap / 2;
+          b.pos[0] += nx * overlap / 2;
+          b.pos[1] += ny * overlap / 2;
+          // Equal-mass elastic bounce along the collision normal.
+          const rel = (a.vel[0] - b.vel[0]) * nx + (a.vel[1] - b.vel[1]) * ny;
+          if (rel > 0) {
+            a.vel[0] -= rel * nx;
+            a.vel[1] -= rel * ny;
+            b.vel[0] += rel * nx;
+            b.vel[1] += rel * ny;
+          }
+        }
+      }
       renderer.render(dice);
       requestAnimationFrame(frame);
     } else {
