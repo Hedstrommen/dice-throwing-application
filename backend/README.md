@@ -1,7 +1,7 @@
 # Dice thrower — C# back end
 
-ASP.NET Core minimal API that serves the static site and provides the back end
-roll math.
+ASP.NET Core minimal API on .NET 10 (LTS, released November 2025) that serves
+the static site and provides the back end roll math.
 
 ## Run
 
