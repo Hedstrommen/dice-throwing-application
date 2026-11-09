@@ -44,13 +44,6 @@ export class CanvasRenderer {
     const Rv = matMul(VIEW, R);
     const light = norm([0.35, 1, 0.25]);
 
-    // Shadow on the table under the die: lit from directly above, so it stays
-    // a fixed ellipse below the die and never rotates with it.
-    ctx.beginPath();
-    ctx.ellipse(cx + pos[0] * s, cy + radius * s * 0.45 + lift * s * 0.15, radius * s * 0.9, radius * s * 0.5, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-    ctx.fill();
-
     const pts = solid.vertices.map((v) => matVec(Rv, [v[0] + pos[0], v[1] + lift, v[2] + pos[1]]));
 
     const faceData = solid.faces.map((face, i) => {
@@ -122,12 +115,36 @@ export class CanvasRenderer {
     }
   }
 
+  // Shadow on the table under one die: lit from directly above, so it stays
+  // a fixed ellipse centered below the die and never rotates with it. A
+  // hopped die casts a smaller, fainter shadow.
+  drawShadow(solid, pos, lift, s) {
+    const ctx = this.ctx;
+    const radius = Math.max(...solid.vertices.map((v) => mag(v)));
+    const cx = this.size / 2;
+    const cy = this.size / 2;
+    const shrink = Math.max(0.55, 1 - lift * 0.9);
+    ctx.beginPath();
+    ctx.ellipse(
+      cx + pos[0] * s,
+      cy + radius * s * 0.45 + lift * s * 0.25,
+      radius * s * 0.9 * shrink,
+      radius * s * 0.5 * shrink,
+      0, 0, Math.PI * 2
+    );
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.35 * shrink})`;
+    ctx.fill();
+  }
+
   render(dies) {
     this.ctx.clearRect(0, 0, this.size, this.size);
-    for (const d of dies) {
+    const prepared = dies.map((d) => {
       const radius = Math.max(...d.solid.vertices.map((v) => mag(v)));
       const s = d.s || (this.size * 0.36) / radius;
-      this.drawDie(d.solid, d.labels, d.R, d.pos, d.lift, s);
-    }
+      return { ...d, s };
+    });
+    // All shadows first so no shadow is painted over another die's body.
+    for (const d of prepared) this.drawShadow(d.solid, d.pos, d.lift, d.s);
+    for (const d of prepared) this.drawDie(d.solid, d.labels, d.R, d.pos, d.lift, d.s);
   }
 }
