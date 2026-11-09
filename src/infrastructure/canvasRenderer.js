@@ -19,6 +19,46 @@ export function orientationForFace(solid, faceIndex) {
   return matMul(R2, R1);
 }
 
+// Coin face icons, drawn in the label's local frame (unit box ~[-0.5, 0.5],
+// glyph-up is -y). Branch-looking Elder Sign: a stem with symmetric upward
+// branches.
+function drawElderSign(ctx) {
+  ctx.strokeStyle = "#101826";
+  ctx.lineWidth = 0.09;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(0, 0.45);
+  ctx.lineTo(0, -0.45);
+  for (const y of [-0.3, 0, 0.3]) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(-0.38, y - 0.32);
+    ctx.moveTo(0, y);
+    ctx.lineTo(0.38, y - 0.32);
+  }
+  ctx.stroke();
+}
+
+// Simple Cthulhu icon: a head with eyes and tentacles.
+function drawCthulhu(ctx) {
+  ctx.strokeStyle = "#101826";
+  ctx.fillStyle = "#101826";
+  ctx.lineWidth = 0.08;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(0, -0.08, 0.3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(-0.11, -0.16, 0.05, 0, Math.PI * 2);
+  ctx.arc(0.11, -0.16, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  for (const side of [-1, 0, 1]) {
+    ctx.moveTo(side * 0.12, 0.18);
+    ctx.quadraticCurveTo(side * 0.3, 0.28, side * 0.38, 0.46);
+  }
+  ctx.stroke();
+}
+
 // RendererPort adapter: draws the dice scene onto a 2D canvas.
 export class CanvasRenderer {
   constructor(canvas) {
@@ -105,11 +145,15 @@ export class CanvasRenderer {
         ctx.save();
         ctx.translate(cx + fd.cx * s, cy - fd.cy * s);
         ctx.transform(u[0], u[1], w[0], w[1], 0, 0);
-        ctx.fillStyle = "#101826";
-        ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(String(labels[fd.i]), 0, 0);
+        if (labels[fd.i] === "Elder Sign") drawElderSign(ctx);
+        else if (labels[fd.i] === "Cthulhu") drawCthulhu(ctx);
+        else {
+          ctx.fillStyle = "#101826";
+          ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(labels[fd.i]), 0, 0);
+        }
         ctx.restore();
       }
     }
