@@ -87,10 +87,10 @@ function render(solid, labels, R, pos, lift) {
 
   ctx.clearRect(0, 0, SIZE, SIZE);
 
-  // Shadow on the table under the die.
-  const sh = matVec(Rv, [pos[0], -radius * 0.85, pos[1]]);
+  // Shadow on the table under the die: lit from directly above, so it stays
+  // a fixed ellipse below the die and never rotates with it.
   ctx.beginPath();
-  ctx.ellipse(cx + sh[0] * s, cy - sh[1] * s + lift * s * 0.6, radius * s * 0.9, radius * s * 0.5, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + pos[0] * s, cy + radius * s * 0.45 + lift * s * 0.15, radius * s * 0.9, radius * s * 0.5, 0, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
   ctx.fill();
 
