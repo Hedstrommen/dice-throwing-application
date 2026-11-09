@@ -71,7 +71,7 @@ function roll(amount, sides) {
   const classic = isClassicDie(sides);
   const solid = geometry.solidFor(sides);
   const layout = layoutFor(amount, solid);
-  const TUMBLE_TIME = 1.25;
+  const TUMBLE_TIME = 1.5;
   const SETTLE_TIME = 0.6;
   const start = performance.now();
   let last = start;
@@ -86,8 +86,8 @@ function roll(amount, sides) {
       slot: layout.slots[i],
       R: rotation,
       pos: [0, 0],
-      vel: [(Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7],
-      omega: scale(norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), 9 + Math.random() * 6),
+      vel: [(Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14],
+      omega: scale(norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), 14 + Math.random() * 10),
       lift: 0,
       s: layout.s,
     });
@@ -133,20 +133,21 @@ function roll(amount, sides) {
         const d = dice[i];
         d.pos[0] += d.vel[0] * dt;
         d.pos[1] += d.vel[1] * dt;
-        const fr = Math.exp(-1.1 * dt);
+        const fr = Math.exp(-0.8 * dt);
         d.vel = [d.vel[0] * fr, d.vel[1] * fr];
         if (Math.abs(d.pos[0]) > layout.bound) {
           d.pos[0] = Math.sign(d.pos[0]) * layout.bound;
-          d.vel[0] = -d.vel[0] * 0.55;
+          d.vel[0] = -d.vel[0] * 0.72;
         }
         if (Math.abs(d.pos[1]) > layout.bound) {
           d.pos[1] = Math.sign(d.pos[1]) * layout.bound;
-          d.vel[1] = -d.vel[1] * 0.55;
+          d.vel[1] = -d.vel[1] * 0.72;
         }
         const w = mag(d.omega);
         if (w > 1e-6) d.R = matMul(rotAxis(d.omega, w * dt), d.R);
-        d.omega = scale(d.omega, Math.exp(-1.7 * dt));
-        d.lift = Math.abs(Math.sin(t * 7 + i * 1.7)) * Math.exp(-2.0 * t) * 0.5;
+        d.omega = scale(d.omega, Math.exp(-1.4 * dt));
+        // More hops: faster bouncing that decays over a longer throw.
+        d.lift = Math.abs(Math.sin(t * 10 + i * 1.7)) * Math.exp(-1.4 * t) * 0.7;
       }
       // Dice bounce off each other instead of sticking together.
       const colR = Math.max(...solid.vertices.map((v) => mag(v))) * 0.95;
