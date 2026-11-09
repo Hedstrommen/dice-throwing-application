@@ -1,4 +1,4 @@
-const CACHE = "dice-thrower-v1";
+const CACHE = "dice-thrower-v2";
 const ASSETS = [
   "./",
   "index.html",
@@ -28,13 +28,33 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
-      if (response.ok && event.request.url.startsWith(self.location.origin)) {
+  if (event.request.method !== "GET" || !event.request.url.startsWith(self.location.origin)) return;
+
+  // Navigations: network-first so new deploys show up immediately, cache as
+  // the offline fallback.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).then((response) => {
         const copy = response.clone();
         caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-      }
-      return response;
-    }))
+        return response;
+      }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("index.html")))
+    );
+    return;
+  }
+
+  // Assets: serve from cache, but refresh the cache in the background
+  // (stale-while-revalidate) so updates propagate on the next visit.
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      const network = fetch(event.request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      }).catch(() => cached);
+      return cached || network;
+    })
   );
 });
