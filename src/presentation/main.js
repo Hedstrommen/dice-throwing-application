@@ -1,6 +1,6 @@
 import { rotAxis, matMul, transpose, axisAngle, mag, scale, norm } from "../domain/math3.js";
-import { labelsFor, validateAmount } from "../domain/dice.js";
-import { rollDie } from "../application/rollDice.js";
+import { isClassicDie, labelsFor, validateAmount, validateOdds } from "../domain/dice.js";
+import { rollDie, scrambledLabels } from "../application/rollDice.js";
 import { createRandomSource } from "../infrastructure/randomSource.js";
 import { createGeometry } from "../infrastructure/geometry.js";
 import { CanvasRenderer, orientationForFace } from "../infrastructure/canvasRenderer.js";
@@ -47,17 +47,20 @@ function preview() {
   const amount = Number(amountInput.value);
   const sides = Number(typeInput.value);
   if (!Number.isInteger(amount) || amount < 1) return;
+  if (!Number.isInteger(sides) || sides < 1) return;
   const solid = geometry.solidFor(sides);
   const layout = layoutFor(amount, solid);
   rotation = rotAxis([0, 1, 0], 0.5);
   const dice = [];
   for (let i = 0; i < amount; i++) {
-    dice.push({ solid, labels: labelsFor(solid, sides), R: rotation, pos: layout.slots[i], lift: 0, s: layout.s });
+    const labels = isClassicDie(sides) ? labelsFor(solid, sides) : scrambledLabels(solid, sides, randomSource);
+    dice.push({ solid, labels, R: rotation, pos: layout.slots[i], lift: 0, s: layout.s });
   }
   renderer.render(dice);
 }
 
 function roll(amount, sides) {
+  const classic = isClassicDie(sides);
   const solid = geometry.solidFor(sides);
   const layout = layoutFor(amount, solid);
   const TUMBLE_TIME = 1.25;
@@ -70,7 +73,7 @@ function roll(amount, sides) {
     dice.push({
       solid,
       outcome,
-      labels: outcome.labels.slice(),
+      labels: classic ? outcome.labels.slice() : scrambledLabels(solid, sides, randomSource),
       R_final: orientationForFace(solid, outcome.faceIndex),
       slot: layout.slots[i],
       R: rotation,
@@ -81,8 +84,18 @@ function roll(amount, sides) {
       s: layout.s,
     });
   }
+  // Non-classic dice only show real numbers once they settle.
+  const scramble = classic ? null : setInterval(() => {
+    for (const d of dice) d.labels = scrambledLabels(solid, sides, randomSource);
+  }, 90);
+
+  function lockLabels() {
+    if (scramble) clearInterval(scramble);
+    for (const d of dice) d.labels = d.outcome.labels.slice();
+  }
 
   function finish() {
+    lockLabels();
     for (const d of dice) d.R = d.R_final;
     rotation = dice[0].R_final;
     renderer.render(dice);
@@ -131,6 +144,7 @@ function roll(amount, sides) {
       requestAnimationFrame(frame);
     } else {
       // Settle: glide to the grid slots and ease onto the rolled faces.
+      lockLabels();
       const u = Math.min(1, (t - TUMBLE_TIME) / SETTLE_TIME);
       const eased = 1 - Math.pow(1 - u, 3);
       for (const d of dice) {
@@ -158,6 +172,11 @@ form.addEventListener("submit", (event) => {
     return;
   }
   const sides = Number(typeInput.value);
+  const sidesError = validateOdds(sides);
+  if (sidesError) {
+    showError(sidesError);
+    return;
+  }
 
   showError("");
   rollButton.disabled = true;
@@ -170,7 +189,7 @@ form.addEventListener("submit", (event) => {
 amountInput.addEventListener("input", () => {
   if (!rolling) preview();
 });
-typeInput.addEventListener("change", () => {
+typeInput.addEventListener("input", () => {
   if (!rolling) preview();
 });
 
