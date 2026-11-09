@@ -161,8 +161,7 @@ function roll(amount, sides) {
   requestAnimationFrame(frame);
 }
 
-form.addEventListener("submit", (event) => {
-  event.preventDefault();
+function throwDice() {
   if (rolling) return;
 
   const amount = Number(amountInput.value);
@@ -184,7 +183,15 @@ form.addEventListener("submit", (event) => {
   resultEl.classList.remove("win");
   resultEl.textContent = "Rolling...";
   roll(amount, sides);
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  throwDice();
 });
+
+// Pressing/clicking the dice throws them again.
+canvas.addEventListener("pointerdown", throwDice);
 
 amountInput.addEventListener("input", () => {
   if (!rolling) preview();
