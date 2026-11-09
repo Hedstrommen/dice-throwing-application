@@ -25,7 +25,7 @@ app.MapGet("/api/roll", (int amount, int sides) =>
     }
     if (!DiceTypes.IsValid(sides))
     {
-        return Results.BadRequest(new { error = "sides must be one of 2, 4, 6, 8, 10, 12, 20." });
+        return Results.BadRequest(new { error = $"sides must be a whole number from 1 to {DiceTypes.MaxSides}." });
     }
 
     var results = Enumerable.Range(0, amount)

@@ -14,6 +14,18 @@ export function isClassicDie(sides) {
   return Boolean(SHAPES[sides]);
 }
 
+// The closest real die shape for an arbitrary number of sides. Used when the
+// requested sides are not a classic die: the die is rendered with this shape
+// while the rolled number still comes from 1..sides.
+export function closestClassicSides(sides) {
+  const classic = Object.keys(SHAPES).map(Number);
+  let best = classic[0];
+  for (const c of classic) {
+    if (Math.abs(c - sides) < Math.abs(best - sides)) best = c;
+  }
+  return best;
+}
+
 export function labelsFor(solid, sides) {
   if (sides === 2) return solid.faces.slice(0, 2).map((f) => f.label);
   if (isClassicDie(sides)) return solid.faces.map((_, i) => i + 1);
