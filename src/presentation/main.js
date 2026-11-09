@@ -1,4 +1,4 @@
-import { rotAxis, matMul, transpose, axisAngle, matVec, dot, mag, scale, norm } from "../domain/math3.js";
+import { rotAxis, matMul, transpose, axisAngle, mag, scale, norm } from "../domain/math3.js";
 import { isClassicDie, labelsFor, validateAmount, validateOdds } from "../domain/dice.js";
 import { rollDie, scrambledLabels } from "../application/rollDice.js";
 import { createRandomSource } from "../infrastructure/randomSource.js";
@@ -69,7 +69,7 @@ function preview() {
   renderer.render(dice);
 }
 
-function roll(amount, sides) {
+function roll(amount, sides, align = false) {
   const classic = isClassicDie(sides);
   const solid = geometry.solidFor(sides);
   const layout = layoutFor(amount, solid);
@@ -84,9 +84,9 @@ function roll(amount, sides) {
       solid,
       outcome,
       labels: classic ? outcome.labels.slice() : scrambledLabels(solid, sides, randomSource),
-      // Natural settle: land on the rolled face without forcing it to face
-      // the user; pressing the dice aligns them (see alignDice below).
-      R_final: orientationFaceUp(solid, outcome.faceIndex),
+      // Natural settle by default; rolls triggered by pressing the dice align
+      // the rolled face towards the user.
+      R_final: align ? orientationForFace(solid, outcome.faceIndex) : orientationFaceUp(solid, outcome.faceIndex),
       slot: layout.slots[i],
       R: rotation,
       pos: [0, 0],
@@ -202,8 +202,7 @@ function roll(amount, sides) {
   requestAnimationFrame(frame);
 }
 
-form.addEventListener("submit", (event) => {
-  event.preventDefault();
+function throwDice(align = false) {
   if (rolling) return;
 
   const amount = Number(amountInput.value);
@@ -224,39 +223,17 @@ form.addEventListener("submit", (event) => {
   rolling = true;
   resultEl.classList.remove("win");
   resultEl.textContent = "Rolling...";
-  roll(amount, sides);
-});
-
-// Pressing the dice aligns them all towards the user (top face readable).
-function alignDice() {
-  if (rolling || currentDice.length === 0) return;
-  const start = performance.now();
-  const targets = currentDice.map((d) => {
-    let top = 0;
-    let best = -Infinity;
-    d.solid.faces.forEach((f, i) => {
-      const n = matVec(d.R, f.normal);
-      if (n[1] > best) {
-        best = n[1];
-        top = i;
-      }
-    });
-    return orientationForFace(d.solid, top);
-  });
-  function step(now) {
-    const u = Math.min(1, (now - start) / 500);
-    const eased = 1 - Math.pow(1 - u, 3);
-    currentDice.forEach((d, i) => {
-      const diff = axisAngle(matMul(targets[i], transpose(d.R)));
-      d.R = matMul(rotAxis(diff.axis, diff.angle * eased), d.R);
-    });
-    renderer.render(currentDice);
-    if (u < 1) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
+  roll(amount, sides, align);
 }
 
-canvas.addEventListener("pointerdown", alignDice);
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  throwDice();
+});
+
+// Pressing/clicking the dice throws them again and, per #30, aligns them
+// towards the user when they settle.
+canvas.addEventListener("pointerdown", () => throwDice(true));
 
 amountInput.addEventListener("input", () => {
   if (!rolling) preview();
