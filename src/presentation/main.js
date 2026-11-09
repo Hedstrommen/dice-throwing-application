@@ -1,9 +1,9 @@
-import { rotAxis, matMul, transpose, axisAngle, mag, scale, norm } from "../domain/math3.js";
+import { rotAxis, matMul, transpose, axisAngle, matVec, dot, mag, scale, norm } from "../domain/math3.js";
 import { isClassicDie, labelsFor, validateAmount, validateOdds } from "../domain/dice.js";
 import { rollDie, scrambledLabels } from "../application/rollDice.js";
 import { createRandomSource } from "../infrastructure/randomSource.js";
 import { createGeometry } from "../infrastructure/geometry.js";
-import { CanvasRenderer, orientationForFace } from "../infrastructure/canvasRenderer.js";
+import { CanvasRenderer, orientationForFace, orientationFaceUp } from "../infrastructure/canvasRenderer.js";
 
 const form = document.getElementById("odds-form");
 const amountInput = document.getElementById("amount-input");
@@ -24,6 +24,7 @@ function showError(message) {
 
 let rotation = rotAxis([0, 1, 0], 0.5);
 let rolling = false;
+let currentDice = [];
 
 // Lay the dice out on a centered grid that fits the canvas.
 function layoutFor(amount, solid) {
@@ -64,6 +65,7 @@ function preview() {
     const labels = isClassicDie(sides) ? labelsFor(solid, sides) : scrambledLabels(solid, sides, randomSource);
     dice.push({ solid, labels, R: rotation, pos: layout.slots[i], lift: 0, s: layout.s });
   }
+  currentDice = dice;
   renderer.render(dice);
 }
 
@@ -82,7 +84,9 @@ function roll(amount, sides) {
       solid,
       outcome,
       labels: classic ? outcome.labels.slice() : scrambledLabels(solid, sides, randomSource),
-      R_final: orientationForFace(solid, outcome.faceIndex),
+      // Natural settle: land on the rolled face without forcing it to face
+      // the user; pressing the dice aligns them (see alignDice below).
+      R_final: orientationFaceUp(solid, outcome.faceIndex),
       slot: layout.slots[i],
       R: rotation,
       pos: [0, 0],
@@ -92,6 +96,7 @@ function roll(amount, sides) {
       s: layout.s,
     });
   }
+  currentDice = dice;
   // Non-classic dice only show real numbers once they settle.
   const scramble = classic ? null : setInterval(() => {
     for (const d of dice) d.labels = scrambledLabels(solid, sides, randomSource);
@@ -221,6 +226,37 @@ form.addEventListener("submit", (event) => {
   resultEl.textContent = "Rolling...";
   roll(amount, sides);
 });
+
+// Pressing the dice aligns them all towards the user (top face readable).
+function alignDice() {
+  if (rolling || currentDice.length === 0) return;
+  const start = performance.now();
+  const targets = currentDice.map((d) => {
+    let top = 0;
+    let best = -Infinity;
+    d.solid.faces.forEach((f, i) => {
+      const n = matVec(d.R, f.normal);
+      if (n[1] > best) {
+        best = n[1];
+        top = i;
+      }
+    });
+    return orientationForFace(d.solid, top);
+  });
+  function step(now) {
+    const u = Math.min(1, (now - start) / 500);
+    const eased = 1 - Math.pow(1 - u, 3);
+    currentDice.forEach((d, i) => {
+      const diff = axisAngle(matMul(targets[i], transpose(d.R)));
+      d.R = matMul(rotAxis(diff.axis, diff.angle * eased), d.R);
+    });
+    renderer.render(currentDice);
+    if (u < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+canvas.addEventListener("pointerdown", alignDice);
 
 amountInput.addEventListener("input", () => {
   if (!rolling) preview();
