@@ -19,6 +19,16 @@ export function orientationForFace(solid, faceIndex) {
   return matMul(R2, R1);
 }
 
+// Minimal rotation that only stands the face up (+Y), keeping whatever
+// in-plane orientation the die naturally landed in.
+export function orientationFaceUp(solid, faceIndex) {
+  const face = solid.faces[faceIndex];
+  const up = [0, 1, 0];
+  const c = Math.max(-1, Math.min(1, dot(face.normal, up)));
+  const axis = cross(face.normal, up);
+  return mag(axis) < 1e-9 ? (c > 0 ? identity() : rotAxis([1, 0, 0], Math.PI)) : rotAxis(axis, Math.acos(c));
+}
+
 // RendererPort adapter: draws the dice scene onto a 2D canvas.
 export class CanvasRenderer {
   constructor(canvas) {
