@@ -30,14 +30,22 @@ function layoutFor(amount, solid) {
   const radius = Math.max(...solid.vertices.map((v) => mag(v)));
   const cols = Math.ceil(Math.sqrt(amount));
   const rows = Math.ceil(amount / cols);
-  const s = Math.min((renderer.size * 0.36) / radius, (renderer.size * 0.8) / (2 * radius * Math.max(cols, rows)));
+  // Each die gets its own cell; the die fills at most ~70% of the cell so
+  // neighbouring dice never touch or stack.
+  const cellW = (renderer.size * 0.9) / cols;
+  const cellH = (renderer.size * 0.9) / rows;
+  const s = Math.min(
+    (renderer.size * 0.36) / radius,
+    (cellW * 0.7) / (2 * radius),
+    (cellH * 0.7) / (2 * radius)
+  );
   const slots = [];
   for (let i = 0; i < amount; i++) {
     const c = i % cols;
     const r = Math.floor(i / cols);
     slots.push([
-      ((c - (cols - 1) / 2) * renderer.size * 0.8) / cols / s,
-      ((r - (rows - 1) / 2) * renderer.size * 0.8) / rows / s,
+      ((c - (cols - 1) / 2) * cellW) / s,
+      ((r - (rows - 1) / 2) * cellH) / s,
     ]);
   }
   return { s, slots, bound: (renderer.size / 2 - radius * s * 0.85) / s };
